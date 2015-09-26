@@ -35,22 +35,32 @@ class WineDataset(Dataset):
     def __init__(self, filename):
         self.winedata = np.genfromtxt(filename, delimiter=';')[1:]       # remove the first line (featureset description)
 
-    def standardize(self, data):
+    def standardize(self, data=[]):
         """Given matrix data, standardizes each feature by subtracting mean and
         dividing by standard deviation. Returns new matrix of same shape with 
         standardized values."""
 
+        if (data == []):
+            data = self.winedata
+
+        self.winedata_raw = np.copy(data)
         new_data = np.copy(np.transpose(data))
 
+        self.means = np.zeros(len(new_data))
+        self.std_devs = np.zeros(len(new_data))
+
         for i in range(len(new_data)):
-            self.mean = np.mean(new_data[i])
-            self.std_dev = np.std(new_data[i])
-            new_data[i] = [(x - self.mean)/self.std_dev for x in new_data[i]]
+            self.means[i] = np.mean(new_data[i])
+            self.std_devs[i] = np.std(new_data[i])
+            new_data[i] = [(x - self.means[i])/self.std_devs[i] for x in new_data[i]]
+        
+        self.winedata = np.transpose(new_data)
+        return self.winedata
 
-        return np.transpose(new_data)
-
-    def unstandardize_value(self, val):
-        return val * self.std_dev + self.mean
+    def unstandardize_value(self, val, index):
+        """Given feature number 'index' and standardized value 'val', return original value
+        by looking up mean and std dev and adding and multiplying them back respectively."""
+        return val * self.std_devs[index] + self.means[index]
 
 
 
@@ -70,8 +80,9 @@ def analyze(data, plot_this=False):
         plt.show()
 
 def mad(w, data, labels):
-
-    # iterate over all examples
+    """Mean Absolute Deviation. Iterate over all examples in 'data' and find the absolute difference label and
+    predicted label. Sum all this error, then find the arithmetic mean by dividing by 
+    total number of data examples. Return this value."""
 
     total = 0
     N = len(data)
@@ -82,8 +93,9 @@ def mad(w, data, labels):
     return total/float(N)
 
 def rmse(w, data, labels):
-
-    # iterate over all examples
+    """Root Mean Square Error. Iterate over all examples in 'data' and find the difference between label and 
+    predicted label. Square this error and total it for all data, then find the arithmetic
+    average and take the square root. Return that value."""
 
     total = 0
     N = len(data)
@@ -138,6 +150,40 @@ def predict(w, x):
     y_hat = np.dot(w,x)
     return y_hat
 
+def predict_null(w, x):
+    """Given weight vector w, and feature set x, predict and return CONSTANT label y_hat."""
+    y_hat = 5
+    return y_hat
+
+# REC CURVES ###########################################################################
+
+def rec_curve(tolerance):
+    """Plot REC Curve given predicted labels, true labels, and max tolerance."""
+
+
+
+
+
+    return
+
+def accuracy(labels_true, labels_predicted, tolerance):
+    correct_results = [1 if np.absolute(labels_predicted[i] - labels_tolerance[i]) < tolerance else 0 for i in range(len(labels_true))]
+    return np.sum(correct_results)
+
+
+# PART 2: Pearson Product-Moment Correlation Coefficient ###############################
+
+def ppmcc(val, cov, std_dev):
+    """Calculate and return Pearson product-moment correlation coefficient."""
+
+    # TODO
+    
+    return 0
+
+
+
+
+
 if __name__ == '__main__':
     print 'Testing...a1.py'
 
@@ -162,6 +208,11 @@ if __name__ == '__main__':
 
     # print 'X:\n', examples
     # print 'y:\n', labels
+
+    dataset_red_wine = WineDataset(red_file)
+    dataset_red_wine.standardize()
+    score_mean = dataset_red_wine.means[-1]
+    score_std_dev = dataset_red_wine.std_devs[-1]
 
 
     start = 0
@@ -205,7 +256,7 @@ if __name__ == '__main__':
 
 
     # plot it
-    plt.semilogx(reg_terms, rmse_errors)
+    plt.semilogx(reg_terms, [dataset_red_wine.std_devs[-1]*error for error in rmse_errors])
 
     # plot setup
     plt.xlabel('Regularization Term (lambda)')
@@ -218,7 +269,7 @@ if __name__ == '__main__':
 
 
     # plot it
-    plt.semilogx(reg_terms, mad_errors)
+    plt.semilogx(reg_terms, [dataset_red_wine.std_devs[-1]*error for error in mad_errors])
 
     # plot setup
     plt.xlabel('Regularization Term (lambda)')
@@ -229,3 +280,15 @@ if __name__ == '__main__':
     plt.show()
     
 
+
+    w = regress_ridge(examples_train, labels_train, 1)
+
+    predictions = [(labels_test[i], predict(w,examples_test[i])) for i in range(10)]
+
+    
+
+
+
+    readable_predictions = [(x[0]*score_std_dev+score_mean, x[1]*score_std_dev+score_mean) for x in predictions]
+
+    print readable_predictions
