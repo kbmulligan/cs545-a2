@@ -14,6 +14,10 @@ from matplotlib import pyplot as plt
 red_file = "winequality-red.csv"
 white_file = "winequality-white.csv"
 
+reserve = 0.33
+
+subset_size = 0.5
+
 
 class RidgeRegression :
 
@@ -32,8 +36,22 @@ class Dataset :
 
 class WineDataset(Dataset):
 
-    def __init__(self, filename):
+    def __init__(self, filename, name=''):
         self.winedata = np.genfromtxt(filename, delimiter=';')[1:]       # remove the first line (featureset description)
+        if (name == ''):
+            self.name = filename
+        else:
+            self.name = name
+        self.w = []
+
+    def __len__(self):
+        return len(self.winedata)
+
+    def split(self, percent_test):
+        """Splits data into training and testing based on percent_test."""
+        num_for_testing = int(np.floor(len(self) * percent_test))
+        self.data_train = self.winedata[num_for_testing:]
+        self.data_test = self.winedata[:num_for_testing]
 
     def standardize(self, data=[]):
         """Given matrix data, standardizes each feature by subtracting mean and
@@ -43,8 +61,11 @@ class WineDataset(Dataset):
         if (data == []):
             data = self.winedata
 
+        data = np.insert(data, 0, 1, axis=1)                # insert ones for bias
+
         self.winedata_raw = np.copy(data)
         new_data = np.copy(np.transpose(data))
+
 
         self.means = np.zeros(len(new_data))
         self.std_devs = np.zeros(len(new_data))
@@ -52,9 +73,14 @@ class WineDataset(Dataset):
         for i in range(len(new_data)):
             self.means[i] = np.mean(new_data[i])
             self.std_devs[i] = np.std(new_data[i])
-            new_data[i] = [(x - self.means[i])/self.std_devs[i] for x in new_data[i]]
+            if (self.std_devs[i] != 0):                                                         # make sure not to divide by zero
+                new_data[i] = [(x - self.means[i])/self.std_devs[i] for x in new_data[i]]
+            else:
+                # new_data[i] = [(x - self.means[i]) for x in new_data[i]]
+                pass
         
         self.winedata = np.transpose(new_data)
+        print self.winedata
         return self.winedata
 
     def unstandardize_value(self, val, index):
@@ -62,15 +88,51 @@ class WineDataset(Dataset):
         by looking up mean and std dev and adding and multiplying them back respectively."""
         return val * self.std_devs[index] + self.means[index]
 
+    def predict_null(self, w, x):
+        """Given weight vector w, and feature set x, predict and return CONSTANT label y_hat. y_hat 
+        is equal to mean label of training data."""
+        y_hat = np.mean(self.data_train.T[-1])
+        return y_hat
+
+    def predict(self, w, x):
+        """Given weight vector w, and feature set x, predict and return label y_hat."""
+        y_hat = np.dot(w,x)
+        return y_hat
+
+    def mad(self, w, data, labels):
+        """Mean Absolute Deviation. Iterate over all examples in 'data' and find the absolute difference label and
+        predicted label. Sum all this error, then find the arithmetic mean by dividing by 
+        total number of data examples. Return this value."""
+
+        total = 0
+        N = len(data)
+        for i in range(N):
+            error = labels[i] - self.predict(w, data[i])
+            total += np.absolute(error)
+
+        return total/float(N)
+
+    def rmse(self, w, data, labels):
+        """Root Mean Square Error. Iterate over all examples in 'data' and find the difference between label and 
+        predicted label. Square this error and total it for all data, then find the arithmetic
+        average and take the square root. Return that value."""
+
+        total = 0
+        N = len(data)
+        for i in range(N):
+            error = labels[i] - self.predict(w, data[i])
+            total += np.square(error)
+
+        return np.sqrt(total/float(N))
 
 
 
 def analyze(data, plot_this=False):
     print data
-    print 'Length:', len(data)
-    print 'Features:', len(data[0])
+    print 'Data points        :', len(data)
+    print 'Features per point :', len(data[0])
 
-    scores = [x[11] for x in data]
+    scores = [x[-1] for x in data]
 
     print 'Max:', max(scores)
     print 'Min:', min(scores)
@@ -79,45 +141,7 @@ def analyze(data, plot_this=False):
         plt.hist(scores)
         plt.show()
 
-def mad(w, data, labels):
-    """Mean Absolute Deviation. Iterate over all examples in 'data' and find the absolute difference label and
-    predicted label. Sum all this error, then find the arithmetic mean by dividing by 
-    total number of data examples. Return this value."""
 
-    total = 0
-    N = len(data)
-    for i in range(N):
-        error = labels[i] - predict(w, data[i])
-        total += np.absolute(error)
-
-    return total/float(N)
-
-def rmse(w, data, labels):
-    """Root Mean Square Error. Iterate over all examples in 'data' and find the difference between label and 
-    predicted label. Square this error and total it for all data, then find the arithmetic
-    average and take the square root. Return that value."""
-
-    total = 0
-    N = len(data)
-    for i in range(N):
-        error = labels[i] - predict(w, data[i])
-        total += np.square(error)
-
-    return np.sqrt(total/float(N))
-
-def standardize(data):
-    """Given matrix data, standardizes each feature by subtracting mean and
-    dividing by standard deviation. Returns new matrix of same shape with 
-    standardized values."""
-
-    new_data = np.copy(np.transpose(data))
-
-    for i in range(len(new_data)):
-        mean = np.mean(new_data[i])
-        std_dev = np.std(new_data[i])
-        new_data[i] = [(x - mean)/std_dev for x in new_data[i]]
-
-    return np.transpose(new_data)
 
 def extract(data):
     """Given data in the form of examples in rows terminated by label, strips all labels.
@@ -145,15 +169,6 @@ def regress_ridge(X, y, reg):
     w = np.linalg.solve(product + reg * np.identity(len(product)), np.dot(X.T, y))
     return w
 
-def predict(w, x):
-    """Given weight vector w, and feature set x, predict and return label y_hat."""
-    y_hat = np.dot(w,x)
-    return y_hat
-
-def predict_null(w, x):
-    """Given weight vector w, and feature set x, predict and return CONSTANT label y_hat."""
-    y_hat = 5
-    return y_hat
 
 # REC CURVES ###########################################################################
 
@@ -166,9 +181,32 @@ def rec_curve(tolerance):
 
     return
 
-def accuracy(labels_true, labels_predicted, tolerance):
-    correct_results = [1 if np.absolute(labels_predicted[i] - labels_tolerance[i]) < tolerance else 0 for i in range(len(labels_true))]
-    return np.sum(correct_results)
+def accuracy(labels_true, labels_predicted, tolerance, square_error=False):
+    correct_results = np.zeros(len(labels_true))
+    for i in range(len(labels_true)):
+        if (square_error):
+            diff = np.square(labels_predicted[i] - labels_true[i])
+        else:
+            diff = np.absolute(labels_predicted[i] - labels_true[i])
+        # print labels_true[i]
+        # print labels_predicted[i]
+        # print 'diff=',diff
+
+        if (diff <= tolerance):
+            correct_results[i] = 1
+        else:
+            correct_results[i] = 0
+
+    correct = np.sum(correct_results)
+    total = float(len(labels_true))
+    acc = correct/total
+
+    # print 'Accuracy'
+    # print 'correct =', correct
+    # print 'total =', total
+    # print 'acc =', acc
+    # print type(acc)
+    return acc
 
 
 # PART 2: Pearson Product-Moment Correlation Coefficient ###############################
@@ -181,41 +219,9 @@ def ppmcc(val, cov, std_dev):
     return 0
 
 
+def regress_and_find_errors (dataset, Xtrain, ytrain, Xtest, ytest):
 
-
-
-if __name__ == '__main__':
-    print 'Testing...a1.py'
-
-    # load data
-    red_data = np.genfromtxt(red_file, delimiter=';')[1:]           
-    white_data = np.genfromtxt(white_file, delimiter=';')[1:]
-
-    # preliminary analysis
-    analyze(red_data)
-
-    red_data_std = standardize(red_data)
-
-    analyze(red_data_std)
-
-    num_for_testing = 100
-
-    red_data_std_train = red_data_std[num_for_testing:]
-    red_data_std_test = red_data_std[:num_for_testing]
-
-    examples_train, labels_train = extract(red_data_std_train)
-    examples_test, labels_test = extract(red_data_std_test)
-
-    # print 'X:\n', examples
-    # print 'y:\n', labels
-
-    dataset_red_wine = WineDataset(red_file)
-    dataset_red_wine.standardize()
-    score_mean = dataset_red_wine.means[-1]
-    score_std_dev = dataset_red_wine.std_devs[-1]
-
-
-    start = 0
+    start = -3
     end = 8
     logres = 100
 
@@ -223,72 +229,219 @@ if __name__ == '__main__':
     rmse_errors = []
     mad_errors = []
 
+    best_reg_value_rmse = 0
+    best_reg_value_mad = 0
+
     for reg in reg_terms:
-        w = regress_ridge(examples_train, labels_train, reg)
+        w = regress_ridge(Xtrain, ytrain, reg)
         # print 'w:\n', w
         # print len(w)
-
 
         # w = regress_slow(examples, labels)
         # print 'w slow:\n', w
         # print len(w)
 
+        # print predict(w, red_data_std[-1][:-1])
+        # print red_data_std[-1][-1]
 
+        # Xex = [np.zeros(len(Xtrain)) for x in range(10)]
+        # print 'RMSE Test:', rmse(w, Xex, np.ones(10)), rmse(w, Xex, np.zeros(10))
+        # print 'MAD Test:', mad(w, Xex, np.ones(10)), mad(w, Xex, np.zeros(10))
 
-        print predict(w, red_data_std[-1][:-1])
-        print red_data_std[-1][-1]
+        # print 'RMSE Control:', rmse(np.ones(len(w))*np.random.uniform(), Xtest, ytest)
+        # print 'MAD Control:', mad(np.ones(len(w))*np.random.uniform(), Xtest, ytest)
 
-        Xex = [np.zeros(11) for x in range(10)]
-        print 'RMSE Test:', rmse(w, Xex, np.ones(10)), rmse(w, Xex, np.zeros(10))
-        print 'MAD Test:', mad(w, Xex, np.ones(10)), mad(w, Xex, np.zeros(10))
+        rmse_error = dataset.rmse(w, Xtest, ytest)
+        mad_error = dataset.mad(w, Xtest, ytest)
 
-        print 'RMSE Control:', rmse(np.ones(len(w))*np.random.uniform(), examples_test, labels_test)
-        print 'MAD Control:', mad(np.ones(len(w))*np.random.uniform(), examples_test, labels_test)
-
-        rmse_error = rmse(w, examples_test, labels_test)
-        mad_error = mad(w, examples_test, labels_test)
-
-        print 'RMSE:', rmse_error
-        print 'MAD:', mad_error
+        # print 'RMSE:', rmse_error
+        # print 'MAD:', mad_error
 
         rmse_errors.append(rmse_error)
         mad_errors.append(mad_error)
 
+        if rmse_error <= min(rmse_errors):
+            best_reg_value_rmse = reg
 
+        if mad_error <= min(mad_errors):
+            best_reg_value_mad = reg
+
+
+    best_reg_value_avg = (best_reg_value_rmse + best_reg_value_mad) / 2.0       # find avg between RMSE and MAD
+
+    print 'Optimal reg term(RMSE):', best_reg_value_rmse
+    print 'Optimal reg term(MAD):', best_reg_value_mad
+    print 'Average:', best_reg_value_avg
+
+
+
+    # PLOT BEST REGRESSION ############################################################################################
+    w = regress_ridge(Xtrain, ytrain, best_reg_value_mad)
+
+    show_this_many = 20
+
+    Xdisplay = Xtest[:show_this_many]
+    ydisplay = ytest[:show_this_many]
+
+    predictions = np.array([dataset.predict(w, Xdisplay[i]) for i in range(len(Xdisplay))])
+
+    X = np.arange(len(Xdisplay))
+    predictions = (predictions * dataset.std_devs[-1]) + dataset.means[-1]
+    ydisplay = (ydisplay * dataset.std_devs[-1]) + dataset.means[-1]
+    difference = predictions - ydisplay
+    
     # plot it
-    plt.semilogx(reg_terms, [dataset_red_wine.std_devs[-1]*error for error in rmse_errors])
+    # plt.plot(X, predictions)
+    # plt.plot(X, ydisplay)
+    # plt.stem(X, difference, '-.')
+    plt.plot(X, ydisplay, X, predictions)
+    # plt.scatter(X, predictions)
+    plt.scatter(X, ydisplay)
+    plt.axis([0,len(X),0,10])
+
 
     # plot setup
-    plt.xlabel('Regularization Term (lambda)')
+    plt.xlabel('Test Data Point')
+    plt.ylabel('Score')
+    plt.title('Predicted and True Scores' + ' (' + dataset.name + ')')
+    plt.grid(True)
+    # plt.savefig('Predicted and True Scores' + '(' + dataset.name + ').png')
+    plt.show()
+    plt.close()
+
+
+
+    ### PLOT ERROR VS REGULARIZATION ###################################################################################
+
+    # plot it
+    plt.semilogx(reg_terms, [dataset.std_devs[-1]*error for error in rmse_errors])
+
+    # plot setup
+    plt.xlabel('Regularization Term (\$lambda$)')
     plt.ylabel('RMSE')
-    plt.title('RMSE as Regularization Term Varies')
+    plt.title('RMSE as Regularization Term Varies' + ' (' + dataset.name + ')')
     plt.grid(True)
-    # plt.savefig("RMSEvsLambda.png")
+    # plt.savefig('RMSEvsLambda' + '(' + dataset.name + ').png')
     plt.show()
+    plt.close()
 
 
 
     # plot it
-    plt.semilogx(reg_terms, [dataset_red_wine.std_devs[-1]*error for error in mad_errors])
+    plt.semilogx(reg_terms, [dataset.std_devs[-1]*error for error in mad_errors])
 
     # plot setup
-    plt.xlabel('Regularization Term (lambda)')
+    plt.xlabel('Regularization Term ($\lambda$)')
     plt.ylabel('MAD')
-    plt.title('MAD as Regularization Term Varies')
+    plt.title('MAD as Regularization Term Varies' + ' (' + dataset.name + ')')
     plt.grid(True)
-    # plt.savefig("MADvsLambda.png")
+    # plt.savefig('MADvsLambda' + '(' + dataset.name + ').png')
     plt.show()
+    plt.close()
+
+
+    return
+
+def test_dataset(dataset):
+    """Run full test on dataset. Test includes regression for range of lambda, REC curves, and 
+    analysis of feature importance."""
+
+    np.random.shuffle(dataset.winedata)
+
+    analyze(dataset.winedata)
+
+    red_data_std = dataset.standardize()
+    score_mean = dataset.means[-1]
+    score_std_dev = dataset.std_devs[-1]
+
+    analyze(dataset.winedata)
+
+    dataset.split(reserve)
+
+    examples_train, labels_train = extract(dataset.data_train)
+    examples_test, labels_test = extract(dataset.data_test)
+
+    # print 'X:\n', examples_train
+    # print 'y:\n', labels_train
+
+    regress_and_find_errors(dataset, examples_train, labels_train, examples_test, labels_test)
+
+
+
+    ### PLOT REC: ACCURACY VS TOLERANCE ###############################################################################
     
+    best_reg_term = 1
+    high_reg = 20000
+    tolerance_step = 0.01
+    tolerance_start = 0
+    tolerance_stop = 3
 
 
-    w = regress_ridge(examples_train, labels_train, 1)
+    w = regress_ridge(examples_train, labels_train, best_reg_term)
 
-    predictions = [(labels_test[i], predict(w,examples_test[i])) for i in range(10)]
+    tolerances = np.arange(tolerance_start,tolerance_stop,tolerance_step)
+    accuracies = np.zeros(len(tolerances))
 
-    
+    total_test_points = len(examples_test)
+
+    predictions = [dataset.predict(w,examples_test[i]) for i in range(total_test_points)]
+
+
+    # iterate through tolerances and calculate accuracy for each
+    for i in range(len(tolerances)):
+        accuracies[i] = accuracy(labels_test, predictions, tolerances[i])
+
+
+    # plot it
+    plt.plot(tolerances, accuracies)
 
 
 
-    readable_predictions = [(x[0]*score_std_dev+score_mean, x[1]*score_std_dev+score_mean) for x in predictions]
+    w = regress_ridge(examples_train, labels_train, high_reg)
 
-    print readable_predictions
+    predictions = [dataset.predict(w,examples_test[i]) for i in range(total_test_points)]
+
+
+    # iterate through tolerances and calculate accuracy for each
+    for i in range(len(tolerances)):
+        accuracies[i] = float(accuracy(labels_test, predictions, tolerances[i]))
+
+
+    # plot it
+    plt.plot(tolerances, accuracies)
+
+
+    w = regress_ridge(examples_train, labels_train, best_reg_term)
+
+    predictions = [dataset.predict_null(w,examples_test[i]) for i in range(total_test_points)]
+
+
+    # iterate through tolerances and calculate accuracy for each
+    for i in range(len(tolerances)):
+        accuracies[i] = float(accuracy(labels_test, predictions, tolerances[i]))
+
+    # plot it
+    plt.plot(tolerances, accuracies)
+
+
+    # plot setup
+    plt.xlabel('Tolerance (e)')
+    plt.ylabel('Accuracy')
+    plt.title('REC' + ' (' + dataset.name + ')')
+    plt.grid(True)
+    plt.savefig('REC' + '(' + dataset.name + ').png')
+    plt.show()
+    plt.close()
+
+
+    return
+
+if __name__ == '__main__':
+    print 'Testing...a1.py'
+
+    # load data
+    red = WineDataset(red_file, 'red')
+    # white = WineDataset(white_file, 'white')
+
+    test_dataset(red)
+    # test_dataset(white)
