@@ -14,11 +14,6 @@ from matplotlib import pyplot as plt
 red_file = "winequality-red.csv"
 white_file = "winequality-white.csv"
 
-reserve = 0.33
-
-subset_size = 0.5
-
-
 class RidgeRegression :
 
     def __init__(self):
@@ -125,7 +120,9 @@ class WineDataset(Dataset):
 
         return np.sqrt(total/float(N))
 
+    ### END CLASS #####################################################################################################
 
+### UTILITY ###########################################################################################################
 
 def analyze(data, plot_this=False):
     print data
@@ -140,8 +137,6 @@ def analyze(data, plot_this=False):
     if (plot_this == True):
         plt.hist(scores)
         plt.show()
-
-
 
 def extract(data):
     """Given data in the form of examples in rows terminated by label, strips all labels.
@@ -170,18 +165,56 @@ def regress_ridge(X, y, reg):
     return w
 
 
-# REC CURVES ###########################################################################
+# REC CURVES ##########################################################################################################
 
-def rec_curve(tolerance):
+def rec_curve(dataset, weight_vectors, Xtest, ytest):
     """Plot REC Curve given predicted labels, true labels, and max tolerance."""
 
+    tolerance_step = 0.01
+    tolerance_start = 0
+    tolerance_stop = 3
+
+    tolerances = np.arange(tolerance_start,tolerance_stop,tolerance_step)
+    accuracies = np.zeros(len(tolerances))
+
+    total_test_points = len(Xtest)
+
+    
+    for w in weight_vectors:
+        predictions = [dataset.predict(w, Xtest[i]) for i in range(total_test_points)]
+
+        # iterate through tolerances and calculate accuracy for each
+        for i in range(len(tolerances)):
+            accuracies[i] = accuracy(ytest, predictions, tolerances[i])
+
+        # plot it
+        plt.plot(tolerances, accuracies)
 
 
+    # always include null model
+    predictions = [dataset.predict_null(weight_vectors[0], Xtest[i]) for i in range(total_test_points)]
 
+    # iterate through tolerances and calculate accuracy for each
+    for i in range(len(tolerances)):
+        accuracies[i] = float(accuracy(ytest, predictions, tolerances[i]))
+
+    # plot it
+    plt.plot(tolerances, accuracies)
+
+
+    # plot setup
+    plt.xlabel('Tolerance ($\epsilon$)')
+    plt.ylabel('Accuracy')
+    plt.title('REC' + ' (' + dataset.name + ')')
+    plt.grid(True)
+    plt.savefig('REC' + '(' + dataset.name + ').png')
+    plt.show()
+    plt.close()
 
     return
 
 def accuracy(labels_true, labels_predicted, tolerance, square_error=False):
+    """Sum the number of predicted labels within 'tolerance' of true labels and divide by total. Return this fraction."""
     correct_results = np.zeros(len(labels_true))
     for i in range(len(labels_true)):
         if (square_error):
@@ -209,7 +242,7 @@ def accuracy(labels_true, labels_predicted, tolerance, square_error=False):
     return acc
 
 
-# PART 2: Pearson Product-Moment Correlation Coefficient ###############################
+# PART 2: Pearson Product-Moment Correlation Coefficient ##############################################################
 
 def ppmcc(val, cov, std_dev):
     """Calculate and return Pearson product-moment correlation coefficient."""
@@ -278,7 +311,7 @@ def regress_and_find_errors (dataset, Xtrain, ytrain, Xtest, ytest):
     # PLOT BEST REGRESSION ############################################################################################
     w = regress_ridge(Xtrain, ytrain, best_reg_value_mad)
 
-    show_this_many = 20
+    show_this_many = 40
 
     Xdisplay = Xtest[:show_this_many]
     ydisplay = ytest[:show_this_many]
@@ -288,14 +321,11 @@ def regress_and_find_errors (dataset, Xtrain, ytrain, Xtest, ytest):
     X = np.arange(len(Xdisplay))
     predictions = (predictions * dataset.std_devs[-1]) + dataset.means[-1]
     ydisplay = (ydisplay * dataset.std_devs[-1]) + dataset.means[-1]
-    difference = predictions - ydisplay
+    difference = np.absolute(predictions - ydisplay)
     
-    # plot it
-    # plt.plot(X, predictions)
-    # plt.plot(X, ydisplay)
-    # plt.stem(X, difference, '-.')
+    # plot true and predicted labels, true emphasized with scatter dots
     plt.plot(X, ydisplay, X, predictions)
-    # plt.scatter(X, predictions)
+    plt.plot(X,difference)
     plt.scatter(X, ydisplay)
     plt.axis([0,len(X),0,10])
 
@@ -303,7 +333,7 @@ def regress_and_find_errors (dataset, Xtrain, ytrain, Xtest, ytest):
     # plot setup
     plt.xlabel('Test Data Point')
     plt.ylabel('Score')
-    plt.title('Predicted and True Scores' + ' (' + dataset.name + ')')
+    plt.title('Sample Predicted and True Scores' + ' (' + dataset.name + ')')
     plt.grid(True)
     # plt.savefig('Predicted and True Scores' + '(' + dataset.name + ').png')
     plt.show()
@@ -314,10 +344,11 @@ def regress_and_find_errors (dataset, Xtrain, ytrain, Xtest, ytest):
     ### PLOT ERROR VS REGULARIZATION ###################################################################################
 
     # plot it
-    plt.semilogx(reg_terms, [dataset.std_devs[-1]*error for error in rmse_errors])
+    plt.semilogx(reg_terms, [error for error in rmse_errors])                           # normalized
+    # plt.semilogx(reg_terms, [dataset.std_devs[-1]*error for error in rmse_errors])    # unnormalized
 
     # plot setup
-    plt.xlabel('Regularization Term (\$lambda$)')
+    plt.xlabel('Regularization Term ($\lambda$)')
     plt.ylabel('RMSE')
     plt.title('RMSE as Regularization Term Varies' + ' (' + dataset.name + ')')
     plt.grid(True)
@@ -328,7 +359,8 @@ def regress_and_find_errors (dataset, Xtrain, ytrain, Xtest, ytest):
 
 
     # plot it
-    plt.semilogx(reg_terms, [dataset.std_devs[-1]*error for error in mad_errors])
+    plt.semilogx(reg_terms, [error for error in mad_errors])                            # normalized
+    # plt.semilogx(reg_terms, [dataset.std_devs[-1]*error for error in mad_errors])     # unnormalized
 
     # plot setup
     plt.xlabel('Regularization Term ($\lambda$)')
@@ -340,20 +372,47 @@ def regress_and_find_errors (dataset, Xtrain, ytrain, Xtest, ytest):
     plt.close()
 
 
+    return best_reg_value_mad
+
+
+def evaluate_feature_importance(dataset):
+    reg = 1
+
+    training_subset_fraction = 0.5
+    total = len(dataset.data_train)
+    cutoff = int(np.floor(total * training_subset_fraction))
+
+    subset_train = dataset.data_train[:cutoff]
+
+    Xsubset, ysubset = extract(subset_train)
+    # print subset_train, len(subset_train)
+
+    w = regress_ridge(Xsubset, ysubset, reg)
+
+    print w
+
+    index_by_importance = list(reversed(sorted(range(len(w)), key=lambda k: w[k])))
+
+    print index_by_importance
+
     return
+
+
 
 def test_dataset(dataset):
     """Run full test on dataset. Test includes regression for range of lambda, REC curves, and 
     analysis of feature importance."""
 
-    np.random.shuffle(dataset.winedata)
+    ### SETUP #########################################################################################################
 
+    reserve = 0.33
+
+    # initial and only shuffle - makes each call to test_dataset unique
+    # np.random.shuffle(dataset.winedata)
+
+    # analyze before and after standardization
     analyze(dataset.winedata)
-
-    red_data_std = dataset.standardize()
-    score_mean = dataset.means[-1]
-    score_std_dev = dataset.std_devs[-1]
-
+    dataset.standardize()
     analyze(dataset.winedata)
 
     dataset.split(reserve)
@@ -361,80 +420,33 @@ def test_dataset(dataset):
     examples_train, labels_train = extract(dataset.data_train)
     examples_test, labels_test = extract(dataset.data_test)
 
-    # print 'X:\n', examples_train
-    # print 'y:\n', labels_train
 
-    regress_and_find_errors(dataset, examples_train, labels_train, examples_test, labels_test)
-
+    ### PLOT RMSE AND MAD AS FUNCTION OF REGULARIZATION TERM ##########################################################
+    best_reg = regress_and_find_errors(dataset, examples_train, labels_train, examples_test, labels_test)
 
 
     ### PLOT REC: ACCURACY VS TOLERANCE ###############################################################################
-    
-    best_reg_term = 1
+    one_reg = 1
+    mid_reg = 5000
     high_reg = 20000
-    tolerance_step = 0.01
-    tolerance_start = 0
-    tolerance_stop = 3
+    low_reg = 0.0001
+
+    weights = []
+    weights.append(regress_ridge(examples_train, labels_train, one_reg))
+    # w.append(regress_ridge(examples_train, labels_train, high_reg))
+    # w.append(regress_ridge(examples_train, labels_train, low_reg))
+    weights.append(regress_ridge(examples_train, labels_train, mid_reg))
+
+    rec_curve(dataset, weights, examples_test, labels_test)
 
 
-    w = regress_ridge(examples_train, labels_train, best_reg_term)
+    ### EVALUATING FEATURE IMPORTANCE #################################################################################
+    evaluate_feature_importance(dataset)
 
-    tolerances = np.arange(tolerance_start,tolerance_stop,tolerance_step)
-    accuracies = np.zeros(len(tolerances))
-
-    total_test_points = len(examples_test)
-
-    predictions = [dataset.predict(w,examples_test[i]) for i in range(total_test_points)]
-
-
-    # iterate through tolerances and calculate accuracy for each
-    for i in range(len(tolerances)):
-        accuracies[i] = accuracy(labels_test, predictions, tolerances[i])
-
-
-    # plot it
-    plt.plot(tolerances, accuracies)
-
-
-
-    w = regress_ridge(examples_train, labels_train, high_reg)
-
-    predictions = [dataset.predict(w,examples_test[i]) for i in range(total_test_points)]
-
-
-    # iterate through tolerances and calculate accuracy for each
-    for i in range(len(tolerances)):
-        accuracies[i] = float(accuracy(labels_test, predictions, tolerances[i]))
-
-
-    # plot it
-    plt.plot(tolerances, accuracies)
-
-
-    w = regress_ridge(examples_train, labels_train, best_reg_term)
-
-    predictions = [dataset.predict_null(w,examples_test[i]) for i in range(total_test_points)]
-
-
-    # iterate through tolerances and calculate accuracy for each
-    for i in range(len(tolerances)):
-        accuracies[i] = float(accuracy(labels_test, predictions, tolerances[i]))
-
-    # plot it
-    plt.plot(tolerances, accuracies)
-
-
-    # plot setup
-    plt.xlabel('Tolerance (e)')
-    plt.ylabel('Accuracy')
-    plt.title('REC' + ' (' + dataset.name + ')')
-    plt.grid(True)
-    plt.savefig('REC' + '(' + dataset.name + ').png')
-    plt.show()
-    plt.close()
-
-
+    
     return
+
+
 
 if __name__ == '__main__':
     print 'Testing...a1.py'
