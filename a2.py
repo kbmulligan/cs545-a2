@@ -244,12 +244,19 @@ def accuracy(labels_true, labels_predicted, tolerance, square_error=False):
 
 # PART 2: Pearson Product-Moment Correlation Coefficient ##############################################################
 
-def ppmcc(val, cov, std_dev):
-    """Calculate and return Pearson product-moment correlation coefficient."""
+def ppmcc(x, y):
+    """Calculate and return Pearson product-moment correlation coefficient, r.
+    Given standardized vectors x and y, sum the products, and divide by n - 1."""
+    r = 0
 
-    # TODO
-    
-    return 0
+    if (len(x) != len(y)):
+        print '\n\nPPMCC Error: x and y different length.\n\n'
+    else:
+        n = len(x)
+        products = [x[i] * y[i] for i in range(n)]
+        r = np.sum(products)/float(n - 1)
+
+    return r
 
 
 def regress_and_find_errors (dataset, Xtrain, ytrain, Xtest, ytest):
@@ -335,7 +342,7 @@ def regress_and_find_errors (dataset, Xtrain, ytrain, Xtest, ytest):
     plt.ylabel('Score')
     plt.title('Sample Predicted and True Scores' + ' (' + dataset.name + ')')
     plt.grid(True)
-    # plt.savefig('Predicted and True Scores' + '(' + dataset.name + ').png')
+    plt.savefig('Predicted and True Scores' + '(' + dataset.name + ').png')
     plt.show()
     plt.close()
 
@@ -352,7 +359,7 @@ def regress_and_find_errors (dataset, Xtrain, ytrain, Xtest, ytest):
     plt.ylabel('RMSE')
     plt.title('RMSE as Regularization Term Varies' + ' (' + dataset.name + ')')
     plt.grid(True)
-    # plt.savefig('RMSEvsLambda' + '(' + dataset.name + ').png')
+    plt.savefig('RMSEvsLambda' + '(' + dataset.name + ').png')
     plt.show()
     plt.close()
 
@@ -367,7 +374,7 @@ def regress_and_find_errors (dataset, Xtrain, ytrain, Xtest, ytest):
     plt.ylabel('MAD')
     plt.title('MAD as Regularization Term Varies' + ' (' + dataset.name + ')')
     plt.grid(True)
-    # plt.savefig('MADvsLambda' + '(' + dataset.name + ').png')
+    plt.savefig('MADvsLambda' + '(' + dataset.name + ').png')
     plt.show()
     plt.close()
 
@@ -391,9 +398,44 @@ def evaluate_feature_importance(dataset):
 
     print w
 
-    index_by_importance = list(reversed(sorted(range(len(w)), key=lambda k: w[k])))
+    # index_by_importance = list(reversed(sorted(range(len(w)), key=lambda k: w[k])))
+    index_and_weight = [(i, w[i]) for i in range(len(w))]
 
-    print index_by_importance
+    print index_and_weight
+
+    X = np.arange(len(w))
+
+    coefs = [ppmcc(Xsubset.T[i], ysubset) for i in X]
+
+    print 'Correlation coefficients:', coefs, len(coefs)
+
+    plt.scatter(w, coefs)
+
+
+    # plot setup
+    plt.xlabel('Weight Vector Value')
+    plt.ylabel('Correlation Coefficient ($r$)')
+    plt.title('Weight Vector vs Correlation Coefficients' + ' (' + dataset.name + ')')
+    plt.grid(True)
+    plt.savefig('WeightVectorCorrelation' + '(' + dataset.name + ').png')
+    plt.show()
+    plt.close()
+
+
+
+
+
+    # incrementally remove features, retrain, and save RMSE and MAD
+
+
+
+
+
+    # plot RMSE and MAD against feature removal
+
+
+
+
 
     return
 
@@ -422,7 +464,7 @@ def test_dataset(dataset):
 
 
     ### PLOT RMSE AND MAD AS FUNCTION OF REGULARIZATION TERM ##########################################################
-    best_reg = regress_and_find_errors(dataset, examples_train, labels_train, examples_test, labels_test)
+    # best_reg = regress_and_find_errors(dataset, examples_train, labels_train, examples_test, labels_test)
 
 
     ### PLOT REC: ACCURACY VS TOLERANCE ###############################################################################
@@ -437,7 +479,7 @@ def test_dataset(dataset):
     # w.append(regress_ridge(examples_train, labels_train, low_reg))
     weights.append(regress_ridge(examples_train, labels_train, mid_reg))
 
-    rec_curve(dataset, weights, examples_test, labels_test)
+    # rec_curve(dataset, weights, examples_test, labels_test)
 
 
     ### EVALUATING FEATURE IMPORTANCE #################################################################################
@@ -453,7 +495,7 @@ if __name__ == '__main__':
 
     # load data
     red = WineDataset(red_file, 'red')
-    # white = WineDataset(white_file, 'white')
+    white = WineDataset(white_file, 'white')
 
     test_dataset(red)
-    # test_dataset(white)
+    test_dataset(white)
