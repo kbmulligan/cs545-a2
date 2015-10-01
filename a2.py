@@ -385,16 +385,21 @@ def regress_and_find_errors (dataset, Xtrain, ytrain, Xtest, ytest):
 def evaluate_feature_importance(dataset):
     reg = 1
 
-    training_subset_fraction = 0.5
-    total = len(dataset.data_train)
-    cutoff = int(np.floor(total * training_subset_fraction))
+    training_subset_fraction = 0.2
+    testing_subset_fraction = 0.8
+    total_train = len(dataset.data_train)
+    total_test = len(dataset.data_test)
+    train_cutoff = int(np.floor(total_train * training_subset_fraction))
+    test_cutoff = int(np.floor(total_test * testing_subset_fraction))
 
-    subset_train = dataset.data_train[:cutoff]
+    subset_train = dataset.data_train[:train_cutoff]
+    subset_test = dataset.data_test
 
-    Xsubset, ysubset = extract(subset_train)
-    # print subset_train, len(subset_train)
+    Xsub_train, ysub_train = extract(subset_train)
+    Xsub_test, ysub_test = extract(subset_test)
 
-    w = regress_ridge(Xsubset, ysubset, reg)
+    
+    w = regress_ridge(Xsub_train, ysub_train, reg)
 
     print w
 
@@ -405,7 +410,7 @@ def evaluate_feature_importance(dataset):
 
     X = np.arange(len(w))
 
-    coefs = [ppmcc(Xsubset.T[i], ysubset) for i in X]
+    coefs = [ppmcc(Xsub_train.T[i], ysub_train) for i in X]
 
     print 'Correlation coefficients:', coefs, len(coefs)
 
@@ -422,18 +427,75 @@ def evaluate_feature_importance(dataset):
     plt.close()
 
 
+    plt.stem(range(len(w)), coefs)
+
+    # plot setup
+    plt.xlabel('Weight Vector Index')
+    plt.ylabel('Correlation Coefficient ($r$)')
+    plt.title('Correlation Coefficients for Each Component' + ' (' + dataset.name + ')')
+    plt.grid(True)
+    plt.savefig('CorrelationCoefficients' + '(' + dataset.name + ').png')
+    plt.show()
+    plt.close()
+
 
 
 
     # incrementally remove features, retrain, and save RMSE and MAD
+    rmses = []
+    mads = []
+
+    Xremoval_train = np.array(Xsub_train)
+    Xremoval_test = np.array(Xsub_test)
 
 
+    iterations = []
+    iteration = 0
+
+    while (Xremoval_train.T.any()):
+        w = regress_ridge(Xremoval_train, ysub_train, reg)
+
+        # record RMSE and MAD for this iteration
+        rmses.append(dataset.rmse(w, Xremoval_test, ysub_test))
+        mads.append(dataset.mad(w, Xremoval_test, ysub_test))
+
+        # remove least significant feature from feature list
+        if (w.any()):
+            least_feature = np.argmin(np.absolute(w))
+            # print least_feature 
+            Xremoval_train = np.concatenate((Xremoval_train.T[:least_feature], Xremoval_train.T[least_feature+1:])).T
+            Xremoval_test = np.concatenate((Xremoval_test.T[:least_feature], Xremoval_test.T[least_feature+1:])).T
+        else:
+            break
+        
+        iteration = len(w)
+        iterations.append(iteration)
 
 
+    # print iterations, len(iterations)
+    # print rmses, len(rmses)
+    # print mads, len(mads)
 
     # plot RMSE and MAD against feature removal
 
+    plt.plot(iterations, rmses)
+    plt.xlabel('Features')
+    plt.ylabel('RMSE')
+    plt.title('RMSE vs Features in the Dataset' + ' (' + dataset.name + ')')
+    plt.grid(True)
+    plt.savefig('FeaturesRemainingRMSE' + '(' + dataset.name + ').png')
+    plt.show()
+    plt.close()
 
+
+    plt.plot(iterations, mads)
+    plt.xlabel('Features')
+    plt.ylabel('MAD')
+    plt.title('MAD vs Features in the Dataset' + ' (' + dataset.name + ')')
+    plt.grid(True)
+    plt.savefig('FeaturesRemainingMAD' + '(' + dataset.name + ').png')
+    plt.show()
+    plt.close()
 
 
 
@@ -464,7 +526,7 @@ def test_dataset(dataset):
 
 
     ### PLOT RMSE AND MAD AS FUNCTION OF REGULARIZATION TERM ##########################################################
-    # best_reg = regress_and_find_errors(dataset, examples_train, labels_train, examples_test, labels_test)
+    best_reg = regress_and_find_errors(dataset, examples_train, labels_train, examples_test, labels_test)
 
 
     ### PLOT REC: ACCURACY VS TOLERANCE ###############################################################################
@@ -479,7 +541,7 @@ def test_dataset(dataset):
     # w.append(regress_ridge(examples_train, labels_train, low_reg))
     weights.append(regress_ridge(examples_train, labels_train, mid_reg))
 
-    # rec_curve(dataset, weights, examples_test, labels_test)
+    rec_curve(dataset, weights, examples_test, labels_test)
 
 
     ### EVALUATING FEATURE IMPORTANCE #################################################################################
